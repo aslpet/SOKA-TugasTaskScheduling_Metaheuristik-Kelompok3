@@ -1,5 +1,5 @@
 /**
- * Implements composite fitness for TABWO (Paper 2 reconstruction, Mode A):
+ * Implements composite fitness for TABWO (Paper 2 reconstruction):
  *  F = w_M * (M / M0) + w_E * (E_cost / E0) + w_T * (1.0 - Trust_norm)
  *
  * Defaults:

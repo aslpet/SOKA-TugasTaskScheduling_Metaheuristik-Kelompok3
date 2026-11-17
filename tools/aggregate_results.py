@@ -71,7 +71,7 @@ def stats(values):
 def aggregate_raw_by_size(rows, out_path):
     groups = defaultdict(lambda: defaultdict(list))
     for r in rows:
-        key = (r["mode"], r["scheduler"], int(r["tasks"]))
+        key = (r["scheduler"], int(r["tasks"]))
         groups[key]["makespan"].append(r["makespan_s"])
         groups[key]["energy"].append(r["energy_Wh"])
         groups[key]["cpu_util"].append(r["cpu_util_pct"])
@@ -80,7 +80,7 @@ def aggregate_raw_by_size(rows, out_path):
         groups[key]["sched_time"].append(r["sched_time_ms"])
 
     out_rows = []
-    for (mode, sched, tasks), metrics in sorted(groups.items()):
+    for (sched, tasks), metrics in sorted(groups.items()):
         m_mean, m_std, m_med = stats(metrics["makespan"])
         e_mean, e_std, e_med = stats(metrics["energy"])
         u_mean, u_std, _ = stats(metrics["cpu_util"])
@@ -91,7 +91,6 @@ def aggregate_raw_by_size(rows, out_path):
 
         out_rows.append(
             {
-                "mode": mode,
                 "scheduler": sched,
                 "tasks": tasks,
                 "n_samples": n_samples,
@@ -120,7 +119,7 @@ def aggregate_raw_by_size(rows, out_path):
 
 
 def aggregate_improvement(rows, baseline_name, out_path):
-    # Map baseline value per (mode/wave, workload)
+    # Map baseline value per (wave, workload)
     base_makespan = {}
     base_energy = {}
     for r in rows:
@@ -139,18 +138,17 @@ def aggregate_improvement(rows, baseline_name, out_path):
         if k in base_makespan and base_makespan[k] > 0:
             m_imp = (base_makespan[k] - r["makespan_s"]) / base_makespan[k] * 100.0
             e_imp = (base_energy[k] - r["energy_Wh"]) / base_energy[k] * 100.0
-            grp_key = (r["mode"], sched, int(r["tasks"]))
+            grp_key = (sched, int(r["tasks"]))
             improvements[grp_key]["makespan_imp"].append(m_imp)
             improvements[grp_key]["energy_imp"].append(e_imp)
 
     out_rows = []
-    for (mode, sched, tasks), data in sorted(improvements.items()):
+    for (sched, tasks), data in sorted(improvements.items()):
         m_mean, m_std, m_med = stats(data["makespan_imp"])
         e_mean, e_std, e_med = stats(data["energy_imp"])
         out_rows.append(
             {
                 "baseline": baseline_name,
-                "mode": mode,
                 "scheduler": sched,
                 "tasks": tasks,
                 "n_runs": len(data["makespan_imp"]),
@@ -204,10 +202,10 @@ def wilcoxon_signed_rank(x, y):
 
 
 def compute_wilcoxon_tests(rows, out_path):
-    # Average across seeds per (mode, scheduler, wave, workload)
+    # Average across seeds per (scheduler, wave, workload)
     instance_vals = defaultdict(lambda: defaultdict(list))
     for r in rows:
-        key = (r["mode"], r["scheduler"].upper(), int(r["wave"]), r["workload"])
+        key = (r["scheduler"].upper(), int(r["wave"]), r["workload"])
         instance_vals[key]["makespan"].append(r["makespan_s"])
         instance_vals[key]["energy"].append(r["energy_Wh"])
 
@@ -226,36 +224,33 @@ def compute_wilcoxon_tests(rows, out_path):
     ]
 
     out_rows = []
-    for mode in ["A", "B"]:
-        for algo1, algo2 in pairs:
-            m1_list, m2_list = [], []
-            e1_list, e2_list = [], []
+    instances = set((k[1], k[2]) for k in inst_mean)
+    for algo1, algo2 in pairs:
+        m1_list, m2_list = [], []
+        e1_list, e2_list = [], []
 
-            # Find matching instances
-            instances = set((k[2], k[3]) for k in inst_mean if k[0] == mode)
-            for w, wl in sorted(instances):
-                k1 = (mode, algo1, w, wl)
-                k2 = (mode, algo2, w, wl)
-                if k1 in inst_mean and k2 in inst_mean:
-                    m1_list.append(inst_mean[k1][0])
-                    m2_list.append(inst_mean[k2][0])
-                    e1_list.append(inst_mean[k1][1])
-                    e2_list.append(inst_mean[k2][1])
+        for w, wl in sorted(instances):
+            k1 = (algo1, w, wl)
+            k2 = (algo2, w, wl)
+            if k1 in inst_mean and k2 in inst_mean:
+                m1_list.append(inst_mean[k1][0])
+                m2_list.append(inst_mean[k2][0])
+                e1_list.append(inst_mean[k1][1])
+                e2_list.append(inst_mean[k2][1])
 
-            if len(m1_list) >= 5:
-                w_m, p_m = wilcoxon_signed_rank(m1_list, m2_list)
-                w_e, p_e = wilcoxon_signed_rank(e1_list, e2_list)
-                out_rows.append(
-                    {
-                        "mode": mode,
-                        "comparison": f"{algo1} vs {algo2}",
-                        "n_instances": len(m1_list),
-                        "makespan_W": round(w_m, 1),
-                        "makespan_p_value": round(p_m, 4),
-                        "energy_W": round(w_e, 1),
-                        "energy_p_value": round(p_e, 4),
-                    }
-                )
+        if len(m1_list) >= 5:
+            w_m, p_m = wilcoxon_signed_rank(m1_list, m2_list)
+            w_e, p_e = wilcoxon_signed_rank(e1_list, e2_list)
+            out_rows.append(
+                {
+                    "comparison": f"{algo1} vs {algo2}",
+                    "n_instances": len(m1_list),
+                    "makespan_W": round(w_m, 1),
+                    "makespan_p_value": round(p_m, 4),
+                    "energy_W": round(w_e, 1),
+                    "energy_p_value": round(p_e, 4),
+                }
+            )
 
     if out_rows:
         with open(out_path, "w", newline="", encoding="utf-8") as f:

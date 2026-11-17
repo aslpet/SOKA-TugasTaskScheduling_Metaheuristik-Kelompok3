@@ -16,8 +16,8 @@ import org.cloudsimplus.datacenters.Datacenter;
 import org.cloudsimplus.vms.Vm;
 
 /**
- * Orchestrates multi-wave, multi-seed experiments across Mode A and Mode B
- * for GSA, TABWO, PSO, and Baselines (OLB, Min-Min, Max-Min, FCFS, HRRN).
+ * Orchestrates multi-wave, multi-seed experiments for GSA, TABWO, PSO,
+ * and Baselines (OLB, Min-Min, Max-Min).
  */
 public class ExperimentRunner {
 
@@ -102,7 +102,6 @@ public class ExperimentRunner {
 
     public static MetricsCalculator.ExtendedMetrics replayInCloudSim(
             String schedulerName,
-            String mode,
             String workloadLabel,
             int wave,
             long seed,
@@ -150,7 +149,7 @@ public class ExperimentRunner {
         }
 
         return MetricsCalculator.compute(
-                schedulerName, mode, workloadLabel, wave, seed, schedTimeMs, feUsed, finalFitness,
+                schedulerName, workloadLabel, wave, seed, schedTimeMs, feUsed, finalFitness,
                 finished, specs, infra, vms, dc0Price, dc1Price
         );
     }
@@ -158,7 +157,6 @@ public class ExperimentRunner {
     public static void runWorkload(
             WorkloadEntry entry,
             ExperimentConfig cfg,
-            List<String> modes,
             List<String> algos,
             Path resultsCsv,
             Path convergenceDir
@@ -172,19 +170,19 @@ public class ExperimentRunner {
 
         // 1. Run Baselines (1x deterministic run)
         var olbRes = Baselines.runOlb(tasks, vms, evaluator);
-        var olbMetrics = replayInCloudSim("OLB", "BASELINE", entry.file(), entry.wave(), 42,
+        var olbMetrics = replayInCloudSim("OLB", entry.file(), entry.wave(), 42,
                 olbRes.schedTimeMs(), 1, olbRes.fitness(), olbRes.mapping(), olbRes.dispatchTimes(),
                 tasks, vms, null, cfg.priceDc0(), cfg.priceDc1());
         MetricsCalculator.appendToCsv(resultsCsv, olbMetrics);
 
         var minMinRes = Baselines.runMinMin(tasks, vms, evaluator);
-        var minMinMetrics = replayInCloudSim("MINMIN", "BASELINE", entry.file(), entry.wave(), 42,
+        var minMinMetrics = replayInCloudSim("MINMIN", entry.file(), entry.wave(), 42,
                 minMinRes.schedTimeMs(), 1, minMinRes.fitness(), minMinRes.mapping(), minMinRes.dispatchTimes(),
                 tasks, vms, null, cfg.priceDc0(), cfg.priceDc1());
         MetricsCalculator.appendToCsv(resultsCsv, minMinMetrics);
 
         var maxMinRes = Baselines.runMaxMin(tasks, vms, evaluator);
-        var maxMinMetrics = replayInCloudSim("MAXMIN", "BASELINE", entry.file(), entry.wave(), 42,
+        var maxMinMetrics = replayInCloudSim("MAXMIN", entry.file(), entry.wave(), 42,
                 maxMinRes.schedTimeMs(), 1, maxMinRes.fitness(), maxMinRes.mapping(), maxMinRes.dispatchTimes(),
                 tasks, vms, null, cfg.priceDc0(), cfg.priceDc1());
         MetricsCalculator.appendToCsv(resultsCsv, maxMinMetrics);
@@ -200,57 +198,48 @@ public class ExperimentRunner {
             seeds[k] = 1000L * entry.wave() + entry.tasks() + 17L * k;
         }
 
-        // 3. Run metaheuristics for each requested mode
-        for (String mode : modes) {
-            mode = mode.toUpperCase();
-            for (String algo : algos) {
-                algo = algo.toUpperCase();
-                Scheduler scheduler = null;
+        // 3. Run metaheuristics
+        for (String algo : algos) {
+            algo = algo.toUpperCase();
+            Scheduler scheduler = null;
 
-                if ("GSA".equals(algo)) {
-                    FitnessFunction fit = "A".equals(mode) ? new GsaFitness() : new CommonFitness();
-                    scheduler = new Gsa(cfg.popSize(), cfg.feMax(), cfg.gsaG0(), cfg.gsaAlpha(),
-                            fit, ScheduleEvaluator.QueuePolicy.FCFS);
-                } else if ("TABWO".equals(algo)) {
-                    FitnessFunction fit = "A".equals(mode)
-                            ? new TabwoFitness(cfg.tabwoWeightM(), cfg.tabwoWeightE(), cfg.tabwoWeightT())
-                            : new CommonFitness();
-                    ScheduleEvaluator.QueuePolicy qp = "A".equals(mode)
-                            ? ScheduleEvaluator.QueuePolicy.PRIORITY
-                            : ScheduleEvaluator.QueuePolicy.FCFS;
-                    boolean biased = "A".equals(mode);
-                    scheduler = new Tabwo(cfg.popSize(), cfg.feMax(), cfg.tabwoPp(), cfg.tabwoCr(),
-                            cfg.tabwoPm(), cfg.tabwoSbcEta(), fit, qp, biased);
-                } else if ("PSO".equals(algo)) {
-                    FitnessFunction fit = new CommonFitness();
-                    scheduler = new Pso(cfg.popSize(), cfg.feMax(), cfg.psoWMax(), cfg.psoWMin(),
-                            cfg.psoC1(), cfg.psoC2(), cfg.psoVMax(), fit, ScheduleEvaluator.QueuePolicy.FCFS);
-                }
+            if ("GSA".equals(algo)) {
+                scheduler = new Gsa(cfg.popSize(), cfg.feMax(), cfg.gsaG0(), cfg.gsaAlpha(),
+                        new GsaFitness(), ScheduleEvaluator.QueuePolicy.FCFS);
+            } else if ("TABWO".equals(algo)) {
+                scheduler = new Tabwo(cfg.popSize(), cfg.feMax(), cfg.tabwoPp(), cfg.tabwoCr(),
+                        cfg.tabwoPm(), cfg.tabwoSbcEta(),
+                        new TabwoFitness(cfg.tabwoWeightM(), cfg.tabwoWeightE(), cfg.tabwoWeightT()),
+                        ScheduleEvaluator.QueuePolicy.PRIORITY, true);
+            } else if ("PSO".equals(algo)) {
+                scheduler = new Pso(cfg.popSize(), cfg.feMax(), cfg.psoWMax(), cfg.psoWMin(),
+                        cfg.psoC1(), cfg.psoC2(), cfg.psoVMax(),
+                        new CommonFitness(), ScheduleEvaluator.QueuePolicy.FCFS);
+            }
 
-                if (scheduler == null) continue;
+            if (scheduler == null) continue;
 
-                for (long seed : seeds) {
-                    System.out.printf("Running %s [Mode %s] on %s (seed=%d)...%n", algo, mode, entry.file(), seed);
-                    var schedRes = scheduler.schedule(tasks, vms, null, baseRef, seed);
+            for (long seed : seeds) {
+                System.out.printf("Running %s on %s (seed=%d)...%n", algo, entry.file(), seed);
+                var schedRes = scheduler.schedule(tasks, vms, null, baseRef, seed);
 
-                    var mRecord = replayInCloudSim(algo, mode, entry.file(), entry.wave(), seed,
-                            schedRes.schedTimeMs(), schedRes.feUsed(), schedRes.fitness(),
-                            schedRes.mapping(), schedRes.dispatchTimes(),
-                            tasks, vms, null, cfg.priceDc0(), cfg.priceDc1());
-                    MetricsCalculator.appendToCsv(resultsCsv, mRecord);
+                var mRecord = replayInCloudSim(algo, entry.file(), entry.wave(), seed,
+                        schedRes.schedTimeMs(), schedRes.feUsed(), schedRes.fitness(),
+                        schedRes.mapping(), schedRes.dispatchTimes(),
+                        tasks, vms, null, cfg.priceDc0(), cfg.priceDc1());
+                MetricsCalculator.appendToCsv(resultsCsv, mRecord);
 
-                    // Save convergence
-                    if (convergenceDir != null) {
-                        Files.createDirectories(convergenceDir);
-                        String fname = String.format("%s_%s_wave%d_N%d_seed%d.csv",
-                                algo.toLowerCase(), mode.toLowerCase(), entry.wave(), entry.tasks(), seed);
-                        Path cFile = convergenceDir.resolve(fname);
-                        StringBuilder sb = new StringBuilder("iteration,best_fitness\n");
-                        for (int it = 0; it < schedRes.convergenceHistory().size(); it++) {
-                            sb.append(it).append(",").append(schedRes.convergenceHistory().get(it)).append("\n");
-                        }
-                        Files.writeString(cFile, sb.toString(), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+                // Save convergence
+                if (convergenceDir != null) {
+                    Files.createDirectories(convergenceDir);
+                    String fname = String.format("%s_wave%d_N%d_seed%d.csv",
+                            algo.toLowerCase(), entry.wave(), entry.tasks(), seed);
+                    Path cFile = convergenceDir.resolve(fname);
+                    StringBuilder sb = new StringBuilder("iteration,best_fitness\n");
+                    for (int it = 0; it < schedRes.convergenceHistory().size(); it++) {
+                        sb.append(it).append(",").append(schedRes.convergenceHistory().get(it)).append("\n");
                     }
+                    Files.writeString(cFile, sb.toString(), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
                 }
             }
         }

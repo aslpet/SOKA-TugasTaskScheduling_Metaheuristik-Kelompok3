@@ -104,7 +104,7 @@ public class Tabwo implements Scheduler {
         int maxIter = Math.max(1, feMax / popSize);
         List<Spider> population = new ArrayList<>(popSize);
 
-        // Biased VM probabilities for Mode A
+        // Biased VM probabilities
         double[] vmProbs = new double[m];
         if (biasedInit) {
             double sumP = 0.0;

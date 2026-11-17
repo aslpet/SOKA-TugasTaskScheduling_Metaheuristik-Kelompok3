@@ -1,8 +1,6 @@
 /**
- * Implements Mode B common fitness function:
+ * Implements common fitness function (used by PSO):
  *  F = 0.5 * (M / M0) + 0.5 * (E / E0)
- *
- * Used as a fair control to compare the pure search mechanics of GSA, TABWO, and PSO.
  */
 public class CommonFitness implements FitnessFunction {
 

@@ -19,7 +19,6 @@ public class MetricsCalculator {
 
     public record ExtendedMetrics(
             String scheduler,
-            String mode,
             String workload,
             int wave,
             int tasks,
@@ -44,20 +43,20 @@ public class MetricsCalculator {
 
         public String toCsvRow() {
             return String.format(Locale.ROOT,
-                    "%s,%s,%s,%d,%d,%d,%.2f,%.3f,%.4f,%.2f,%.2f,%.2f,%.2f,%.4f,%.4f,%d,%.2f,%.4f,%.4f,%d,%d,%.6f",
-                    scheduler, mode, workload, wave, tasks, seed, makespan, energyWh, energyCost,
+                    "%s,%s,%d,%d,%d,%.2f,%.3f,%.4f,%.2f,%.2f,%.2f,%.2f,%.4f,%.4f,%d,%.2f,%.4f,%.4f,%d,%d,%.6f",
+                    scheduler, workload, wave, tasks, seed, makespan, energyWh, energyCost,
                     avgExecTime, avgResponseTime, avgTurnaround, cpuUtilPct, throughput, loadImbalance,
                     deadlineMissed, successRatePct, trustNorm, rutilSum, schedTimeMs, feUsed, finalFitness);
         }
 
         public static String csvHeader() {
-            return "scheduler,mode,workload,wave,tasks,seed,makespan_s,energy_Wh,energy_cost,avg_exec_s,"
+            return "scheduler,workload,wave,tasks,seed,makespan_s,energy_Wh,energy_cost,avg_exec_s,"
                     + "avg_response_s,avg_turnaround_s,cpu_util_pct,throughput_task_per_s,load_imbalance,"
                     + "deadline_missed,success_rate_pct,trust_norm,rutil_sum,sched_time_ms,fe_used,final_fitness";
         }
 
         public void print() {
-            System.out.println("==================== METRICS [" + scheduler + " | " + mode + " | " + workload + " (seed=" + seed + ")] ====================");
+            System.out.println("==================== METRICS [" + scheduler + " | " + workload + " (seed=" + seed + ")] ====================");
             System.out.printf(Locale.ROOT, "tasks finished     : %d%n", tasks);
             System.out.printf(Locale.ROOT, "makespan           : %.2f s%n", makespan);
             System.out.printf(Locale.ROOT, "energy             : %.3f Wh%n", energyWh);
@@ -78,7 +77,6 @@ public class MetricsCalculator {
 
     public static ExtendedMetrics compute(
             String scheduler,
-            String mode,
             String workload,
             int wave,
             long seed,
@@ -176,7 +174,7 @@ public class MetricsCalculator {
         }
 
         return new ExtendedMetrics(
-                scheduler, mode, workload, wave, n, seed, makespan, energyWh, energyCost,
+                scheduler, workload, wave, n, seed, makespan, energyWh, energyCost,
                 n > 0 ? sumExec / n : 0, n > 0 ? sumResp / n : 0, n > 0 ? sumTat / n : 0,
                 cpuUtil, makespan > 0 ? n / makespan : 0, imbalance, missed, successRatePct,
                 trustNorm, rutilSum, schedTimeMs, feUsed, finalFitness

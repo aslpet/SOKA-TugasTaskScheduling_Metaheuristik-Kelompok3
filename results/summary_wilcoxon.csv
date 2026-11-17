@@ -1,0 +1,6 @@
+comparison,n_instances,makespan_W,makespan_p_value,energy_W,energy_p_value
+TABWO vs GSA,32,0,0.0,0,0.0
+TABWO vs MINMIN,32,19.0,0.0,13.0,0.0
+GSA vs PSO,32,0,0.0,0,0.0
+GSA vs MINMIN,32,0,0.0,0,0.0
+TABWO vs PSO,32,0,0.0,0,0.0
